@@ -4,6 +4,8 @@ import sys
 from wordpress_xmlrpc.compat import xmlrpc_client, dict_type
 from wordpress_xmlrpc.exceptions import ServerConnectionError, UnsupportedXmlrpcMethodError, InvalidCredentialsError, XmlrpcDisabledError
 
+import logging
+log = logging.getLogger(__name__)
 
 class Client(object):
     """
@@ -13,26 +15,28 @@ class Client(object):
     `XmlrpcMethod`-derived class to `Client`'s `call` method.
     """
 
-    def __init__(self, url, username, password, blog_id=0, transport=None):
+    def __init__(self, url, username, password, blog_id=0, transport=None, verbose=False, validate_method=True):
         self.url = url
         self.username = username
         self.password = password
         self.blog_id = blog_id
+        self.validate_method = validate_method
 
         try:
-            self.server = xmlrpc_client.ServerProxy(url, allow_none=True, transport=transport)
-            self.supported_methods = self.server.mt.supportedMethods()
+            self.server = xmlrpc_client.ServerProxy(url, allow_none=True, verbose=verbose, transport=transport)
+            if self.validate_method:
+                self.supported_methods = self.server.mt.supportedMethods()
         except xmlrpc_client.ProtocolError:
             e = sys.exc_info()[1]
             raise ServerConnectionError(repr(e))
 
     def call(self, method):
-        if method.method_name not in self.supported_methods:
+        if self.validate_method and method.method_name not in self.supported_methods:
             raise UnsupportedXmlrpcMethodError(method.method_name)
 
         server_method = getattr(self.server, method.method_name)
         args = method.get_args(self)
-
+        log.debug('args(%s,%s)',method.method_name,args)
         try:
             raw_result = server_method(*args)
         except xmlrpc_client.Fault:
